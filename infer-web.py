@@ -118,7 +118,9 @@ if if_gpu_ok and len(gpu_infos) > 0:
     gpu_info = "\n".join(gpu_infos)
     default_batch_size = min(mem) // 2
 else:
-    gpu_info = "Unfortunately, there is no compatible GPU available to support your training."
+    gpu_info = (
+        "Unfortunately, there is no compatible GPU available to support your training."
+    )
     default_batch_size = 1
 gpus = "-".join([i[0] for i in gpu_infos])
 
@@ -148,8 +150,9 @@ for name in os.listdir(weight_root):
         names.append(name)
 index_paths = []
 
+
 # .index 파일들을 전부 가져오는 거임 (경로 수집)
-# trained를 포함하지 않는 파일만 추가됨. 
+# trained를 포함하지 않는 파일만 추가됨.
 def lookup_indices(index_root):
     global index_paths
     for root, dirs, files in os.walk(index_root, topdown=False):
@@ -183,6 +186,7 @@ def change_choices():
         "__type__": "update",
     }
 
+
 # 값이 지워지고 업데이트 되는 것을 나타냄
 def clean():
     return {"value": "", "__type__": "update"}
@@ -203,6 +207,7 @@ sr_dict = {
     "48k": 48000,
 }
 
+
 # 작업 완료 함수
 # 작업이 완료될 때까지 대기 -> 작업이 완료되면 플래그 설정
 def if_done(done, p):
@@ -212,6 +217,7 @@ def if_done(done, p):
         else:
             break
     done[0] = True
+
 
 def if_done_multi(done, ps):
     while 1:
@@ -412,6 +418,7 @@ def extract_f0_feature(gpus, n_p, f0method, if_f0, exp_dir, version19, gpus_rmvp
         log = f.read()
     logger.info(log)
     yield log
+
 
 # 사전 훈련 모델 파일의 경로 반환
 # 주어진 디렉토리 + 파일명 문자열 조합 -> 파일 존재여부 확인 -> 파일 경로 반환 (없으면 빈 문자열 반환)
@@ -865,7 +872,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                             )
                             input_audio0 = gr.Textbox(
                                 label='Add audio name to the path to the audio file to be processed (default is the correct format example) Remove the path to use an audio from the dropdown list:"',
-                                value=os.path.abspath(os.getcwd()).replace("\\", "/")
+                                value=os.path.abspath(os.getcwd()).replace("\\", "/"),
                             )
                             file_index1 = gr.Textbox(
                                 label=i18n(
