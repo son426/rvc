@@ -33,6 +33,7 @@ import shutil
 import logging
 
 
+# 로그 설정 및 임시 폴더 생성
 logging.getLogger("numba").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -50,10 +51,12 @@ warnings.filterwarnings("ignore")
 torch.manual_seed(114514)
 
 
+# config / VC 초기화
 config = Config()
 vc = VC(config)
 
 
+# DML 설정 확인
 if config.dml == True:
 
     def forward_dml(ctx, x, scale):
@@ -64,7 +67,7 @@ if config.dml == True:
     fairseq.modules.grad_multiply.GradMultiply.forward = forward_dml
 i18n = I18nAuto()
 logger.info(i18n)
-# 判断是否有能用来训练和加速推理的N卡
+# GPU 정보 수집 (GPU 있을 경우 수집, 없을 경우 메시지 출력)
 ngpu = torch.cuda.device_count()
 gpu_infos = []
 mem = []
@@ -115,11 +118,13 @@ if if_gpu_ok and len(gpu_infos) > 0:
     gpu_info = "\n".join(gpu_infos)
     default_batch_size = min(mem) // 2
 else:
-    gpu_info = i18n("很遗憾您这没有能用的显卡来支持您训练")
+    gpu_info = "Unfortunately, there is no compatible GPU available to support your training."
     default_batch_size = 1
 gpus = "-".join([i[0] for i in gpu_infos])
 
 
+# ToggleButton 클래스 정의
+# Gradio UI 용도
 class ToolButton(gr.Button, gr.components.FormComponent):
     """Small button with single emoji as text, fits inside gradio forms"""
 
@@ -130,6 +135,8 @@ class ToolButton(gr.Button, gr.components.FormComponent):
         return "button"
 
 
+# pth 파일들을 전부 가져오는 거임 (가중치 파일 경로 수집)
+# 가져오는 것들은 전부 경로임 (/assets/weights 같은)
 weight_root = os.getenv("weight_root")
 weight_uvr5_root = os.getenv("weight_uvr5_root")
 index_root = os.getenv("index_root")
@@ -141,7 +148,8 @@ for name in os.listdir(weight_root):
         names.append(name)
 index_paths = []
 
-
+# .index 파일들을 전부 가져오는 거임 (경로 수집)
+# trained를 포함하지 않는 파일만 추가됨. 
 def lookup_indices(index_root):
     global index_paths
     for root, dirs, files in os.walk(index_root, topdown=False):
@@ -158,6 +166,8 @@ for name in os.listdir(weight_uvr5_root):
         uvr5_names.append(name.replace(".pth", ""))
 
 
+# 가중치와 인덱스 파일 경로 바꿀 때 사용
+# .pth .index 파일 경로를 수집하고 리스트를 정렬해서 반환함. (새로고침할때 사용)
 def change_choices():
     names = []
     for name in os.listdir(weight_root):
@@ -173,24 +183,28 @@ def change_choices():
         "__type__": "update",
     }
 
-
+# 값이 지워지고 업데이트 되는 것을 나타냄
 def clean():
     return {"value": "", "__type__": "update"}
 
 
+# onnx 모델 내보내기 함수
+# 주어진 모델 경로에서 ONNX 형식으로 모델을 내보냄
 def export_onnx(ModelPath, ExportedPath):
     from infer.modules.onnx.export import export_onnx as eo
 
     eo(ModelPath, ExportedPath)
 
 
+# 샘플링 레이트 매핑 객체
 sr_dict = {
     "32k": 32000,
     "40k": 40000,
     "48k": 48000,
 }
 
-
+# 작업 완료 함수
+# 작업이 완료될 때까지 대기 -> 작업이 완료되면 플래그 설정
 def if_done(done, p):
     while 1:
         if p.poll() is None:
@@ -198,7 +212,6 @@ def if_done(done, p):
         else:
             break
     done[0] = True
-
 
 def if_done_multi(done, ps):
     while 1:
@@ -215,6 +228,9 @@ def if_done_multi(done, ps):
     done[0] = True
 
 
+# 데이터셋 전처리 함수
+# train 데이터셋을 전처리 + 로그 기록
+# trainset_dir : 데이터셋 경로 / exp_dir : 결과 저장할 경로 / sr : 샘플링 레이트 / n_p : 전처리 작업을 수행할 병렬 프로세스 수
 def preprocess_dataset(trainset_dir, exp_dir, sr, n_p):
     sr = sr_dict[sr]
     os.makedirs("%s/logs/%s" % (now_dir, exp_dir), exist_ok=True)
@@ -254,6 +270,9 @@ def preprocess_dataset(trainset_dir, exp_dir, sr, n_p):
     yield log
 
 
+# 주어진 파라미터로 f0 특성 추출 + 로그 기록
+# F0를 추출하는 여러 방법 중 하나를 선택하고, 해당 방법에 따라 처리 수행
+# gpus : 사용할 GPU 번호 문자열 / n_p : 태스크 수행할 병렬 프로세스 수 / f0method : F0 추출 방법 / if_f0 : F0 특성 추출 여부를 나타내는 불리안 값 / gpus_rmvpe : rmvpe를 수행할 gpu 번호들 문자열
 # but2.click(extract_f0,[gpus6,np7,f0method8,if_f0_3,trainset_dir4],[info2])
 def extract_f0_feature(gpus, n_p, f0method, if_f0, exp_dir, version19, gpus_rmvpe):
     gpus = gpus.split("-")
@@ -394,7 +413,9 @@ def extract_f0_feature(gpus, n_p, f0method, if_f0, exp_dir, version19, gpus_rmvp
     logger.info(log)
     yield log
 
-
+# 사전 훈련 모델 파일의 경로 반환
+# 주어진 디렉토리 + 파일명 문자열 조합 -> 파일 존재여부 확인 -> 파일 경로 반환 (없으면 빈 문자열 반환)
+# path_str : 모델 파일이 저장된 디렉토리 경로 / f0_str : f0 특성에 대한 문자열 / sr2 : 샘플링 레이트
 def get_pretrained_models(path_str, f0_str, sr2):
     if_pretrained_generator_exist = os.access(
         "assets/pretrained%s/%sG%s.pth" % (path_str, f0_str, sr2), os.F_OK
@@ -778,7 +799,7 @@ def train1key(
     yield get_info_str(i18n("全流程结束！"))
 
 
-#                    ckpt_path2.change(change_info_,[ckpt_path2],[sr__,if_f0__])
+# ckpt_path2.change(change_info_,[ckpt_path2],[sr__,if_f0__])
 def change_info_(ckpt_path):
     if not os.path.exists(ckpt_path.replace(os.path.basename(ckpt_path), "train.log")):
         return {"__type__": "update"}, {"__type__": "update"}, {"__type__": "update"}
@@ -843,10 +864,8 @@ with gr.Blocks(title="RVC WebUI") as app:
                                 value=0,
                             )
                             input_audio0 = gr.Textbox(
-                                label=i18n(
-                                    "输入待处理音频文件路径(默认是正确格式示例)"
-                                ),
-                                placeholder="C:\\Users\\Desktop\\audio_example.wav",
+                                label='Add audio name to the path to the audio file to be processed (default is the correct format example) Remove the path to use an audio from the dropdown list:"',
+                                value=os.path.abspath(os.getcwd()).replace("\\", "/")
                             )
                             file_index1 = gr.Textbox(
                                 label=i18n(
